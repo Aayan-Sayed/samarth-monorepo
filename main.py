@@ -47,6 +47,11 @@ class GraphState(TypedDict):
     actionable_steps: str               # formatted response guide
     tts_audio_output: Optional[str]     # base64 encoded audio synthesized from TTS
     detected_language_code: str         # BCP-47 detected language (keep for frontend compatibility)
+    resolved_address: Optional[str]     # address string
+    gps_location: Optional[dict]        # {lat, lng} object
+    email_status: Optional[str]         # status of authority email
+    email_draft: Optional[dict]         # drafted email dict
+
 
 # Helper function: Rule-based mapping fallback for 26 categories
 def rule_based_mapping(text: str) -> dict:
@@ -84,7 +89,13 @@ def rule_based_mapping(text: str) -> dict:
 
     # 4. Consumer, Insurance & Farmer
     if any(w in text_lower for w in ["consumer", "defective", "warranty", "refund", "e-commerce"]):
-        return {"identified_category": "Consumer Disputes", "problem_keywords": ["consumer complaint", "defective goods", "service issue"]}
+        return {"identified_category": "Consumer Disputes & Defective Goods", "problem_keywords": ["consumer complaint", "defective goods", "service issue"]}
+    if any(w in text_lower for w in ["women", "harassment", "female", "domestic", "abuse", "safety", "ncw"]):
+        return {"identified_category": "Women's Rights & Safety", "problem_keywords": ["women rights", "harassment", "safety violation"]}
+    if any(w in text_lower for w in ["human rights", "nhrc", "police brutality", "custody", "torture", "unlawful"]):
+        return {"identified_category": "Human Rights Violations", "problem_keywords": ["human rights violation", "unlawful detention"]}
+    if any(w in text_lower for w in ["pollution", "cpcb", "environmental", "factory smoke", "river dumping", "air quality", "toxic", "waste dump"]):
+        return {"identified_category": "Environmental & Pollution Violations", "problem_keywords": ["environmental pollution", "cpcb violation", "toxic waste"]}
     if any(w in text_lower for w in ["insurance", "claim", "policy", "bima bharosa", "irdai"]):
         return {"identified_category": "Insurance Policies", "problem_keywords": ["insurance claim denial", "policy misselling", "bima bharosa"]}
     if any(w in text_lower for w in ["election", "voter id", "polling", "mcc", "eci"]):
@@ -323,7 +334,7 @@ def problem_mapping_node(state: GraphState) -> dict:
     prompt = ChatPromptTemplate.from_messages([
         ("system", "You are an expert civic complaint router for the Indian National Grievance Portal named 'Samarth'. "
                    "Your job is to analyze the user's transcript and image analysis description, extract keywords, and map the problem "
-                   "to exactly one of the 26 official categories:\n"
+                   "to exactly one of the official categories:\n"
                    "- Central Admin Services\n"
                    "- Right to Information\n"
                    "- Prime Ministerial Petitions\n"
@@ -336,7 +347,10 @@ def problem_mapping_node(state: GraphState) -> dict:
                    "- Cyber Crime & Fraud\n"
                    "- Telecom & Device Security\n"
                    "- Aadhaar Verification\n"
-                   "- Consumer Disputes\n"
+                   "- Consumer Disputes & Defective Goods\n"
+                   "- Women's Rights & Safety\n"
+                   "- Human Rights Violations\n"
+                   "- Environmental & Pollution Violations\n"
                    "- Insurance Policies\n"
                    "- Electoral Process\n"
                    "- Farmer Welfare\n"
@@ -353,7 +367,7 @@ def problem_mapping_node(state: GraphState) -> dict:
                    "You must also detect the language of the transcript if it is not default English. "
                    "Specify the closest matching BCP-47 language code (e.g. 'hi-IN' for Hindi, 'te-IN' for Telugu, 'ta-IN' for Tamil, 'en-IN' for English).\n\n"
                    "You must respond ONLY with a valid JSON object containing three keys:\n"
-                   "- 'category': One of the 26 string values above.\n"
+                   "- 'category': One of the official string values listed above.\n"
                    "- 'keywords': A list of 3-5 extracted keywords from the text.\n"
                    "- 'detected_language_code': The BCP-47 language string.\n"
                    "Do not include any markdown formatting, backticks, or other text outside the JSON object."),
@@ -401,7 +415,10 @@ def problem_mapping_node(state: GraphState) -> dict:
             "Cyber Crime & Fraud",
             "Telecom & Device Security",
             "Aadhaar Verification",
-            "Consumer Disputes",
+            "Consumer Disputes & Defective Goods",
+            "Women's Rights & Safety",
+            "Human Rights Violations",
+            "Environmental & Pollution Violations",
             "Insurance Policies",
             "Electoral Process",
             "Farmer Welfare",
@@ -447,7 +464,10 @@ def portal_routing_node(state: GraphState) -> dict:
         "Cyber Crime & Fraud": "https://cybercrime.gov.in/Webform/Accept.aspx",
         "Telecom & Device Security": "https://sancharsaathi.gov.in/Home/ceir-services.jsp",
         "Aadhaar Verification": "https://myaadhaar.uidai.gov.in/grievance-feedback/hi_IN",
-        "Consumer Disputes": "https://consumerhelpline.gov.in/user/",
+        "Consumer Disputes & Defective Goods": "https://consumerhelpline.gov.in/",
+        "Women's Rights & Safety": "https://ncwapps.nic.in/",
+        "Human Rights Violations": "https://nhrc.nic.in/",
+        "Environmental & Pollution Violations": "https://cpcb.nic.in/",
         "Insurance Policies": "https://bimabharosa.irdai.gov.in/",
         "Electoral Process": "https://voters.eci.gov.in/home/ngsp",
         "Farmer Welfare": "https://pmkisan.gov.in/grievance.aspx",
@@ -628,6 +648,101 @@ def voice_generation_node(state: GraphState) -> dict:
         logger.error(f"Error calling Sarvam TTS: {e}")
         return {"tts_audio_output": fallback_audio}
 
+# Node 7: Email Auto-Dispatcher
+def email_dispatcher_node(state: GraphState) -> dict:
+    logger.info("Entering Node 7: Email Auto-Dispatcher")
+    category = state.get("identified_category", "")
+    transcript = state.get("audio_transcript", "")
+    image_analysis = state.get("image_analysis", "")
+    resolved_address = state.get("resolved_address")
+    gps_location = state.get("gps_location")
+    
+    # Define mapping of categories to recipient emails
+    email_mapping = {
+        "Consumer Disputes & Defective Goods": ["nch-ca@gov.in"],
+        "Women's Rights & Safety": ["complaintcell-ncw@nic.in", "chairperson-ncw@nic.in"],
+        "Human Rights Violations": ["complaint.nhrc@nic.in", "jrlawnhrc@nic.in"],
+        "Environmental & Pollution Violations": ["vigilance.cpcb@gov.in", "ccb.cpcb@nic.in", "cpcb@cpcb.nic.in"]
+    }
+    
+    recipients = email_mapping.get(category)
+    if not recipients:
+        logger.info(f"Category '{category}' does not require direct email dispatch.")
+        return {"email_status": "Not Applicable", "email_draft": None}
+        
+    # Draft email
+    gps_str = f"{gps_location.get('lat')}, {gps_location.get('lng')}" if gps_location else "Not provided"
+    addr_str = resolved_address if resolved_address else "Not provided"
+    
+    subject = f"Urgent Civic Grievance: {category} - Ref: Samarth Redressal"
+    body = f"""To,
+The Respective Authority,
+{category} Redressal Cell.
+
+Subject: Formal Grievance Lodged via Samarth Portal
+
+Dear Sir/Madam,
+
+A citizen has submitted a formal grievance regarding the following issue:
+
+* **Category:** {category}
+* **Description (Voice Transcript):** {transcript}
+* **Visual Evidence (Image Analysis):** {image_analysis or "No photo uploaded"}
+* **Location Coordinates:** {gps_str}
+* **Resolved Address:** {addr_str}
+
+Please review this issue and take the necessary action immediately.
+
+Sincerely,
+Samarth Civic Redressal Desk
+(Sent automatically on behalf of citizen from sayedaayanh@gmail.com)
+"""
+
+    draft = {
+        "to": recipients,
+        "subject": subject,
+        "body": body
+    }
+    
+    sender_email = "sayedaayanh@gmail.com"
+    email_password = os.getenv("EMAIL_PASSWORD")
+    
+    if not email_password:
+        logger.warning("EMAIL_PASSWORD environment variable not set. Email is only drafted.")
+        return {
+            "email_status": "Drafted (EMAIL_PASSWORD not set in env)",
+            "email_draft": draft
+        }
+        
+    try:
+        import smtplib
+        from email.mime.text import MIMEText
+        from email.mime.multipart import MIMEMultipart
+        
+        msg = MIMEMultipart()
+        msg["From"] = sender_email
+        msg["To"] = ", ".join(recipients)
+        msg["Subject"] = subject
+        msg.attach(MIMEText(body, "plain", "utf-8"))
+        
+        server = smtplib.SMTP("smtp.gmail.com", 587)
+        server.starttls()
+        server.login(sender_email, email_password)
+        server.sendmail(sender_email, recipients, msg.as_string())
+        server.close()
+        
+        logger.info(f"Email successfully sent to {recipients}")
+        return {
+            "email_status": "Sent Successfully",
+            "email_draft": draft
+        }
+    except Exception as e:
+        logger.error(f"Failed to send email via SMTP: {e}")
+        return {
+            "email_status": f"Failed to send: {str(e)}",
+            "email_draft": draft
+        }
+
 # Assemble LangGraph StateGraph
 workflow = StateGraph(GraphState)
 
@@ -636,6 +751,7 @@ workflow.add_node("gemini_vision", visual_evidence_node)
 workflow.add_node("groq_mapping", problem_mapping_node)
 workflow.add_node("portal_routing", portal_routing_node)
 workflow.add_node("groq_formatting", resolution_formatting_node)
+workflow.add_node("email_dispatcher", email_dispatcher_node)
 workflow.add_node("sarvam_tts", voice_generation_node)
 
 workflow.set_entry_point("sarvam_stt")
@@ -643,7 +759,8 @@ workflow.add_edge("sarvam_stt", "gemini_vision")
 workflow.add_edge("gemini_vision", "groq_mapping")
 workflow.add_edge("groq_mapping", "portal_routing")
 workflow.add_edge("portal_routing", "groq_formatting")
-workflow.add_edge("groq_formatting", "sarvam_tts")
+workflow.add_edge("groq_formatting", "email_dispatcher")
+workflow.add_edge("email_dispatcher", "sarvam_tts")
 workflow.add_edge("sarvam_tts", END)
 
 app_graph = workflow.compile()
@@ -665,6 +782,8 @@ app.add_middleware(
 class ComplaintRequest(BaseModel):
     audio_stream: Optional[str] = None  # Base64 encoded audio
     uploaded_image: Optional[str] = None  # Base64 encoded image
+    resolved_address: Optional[str] = None
+    gps_location: Optional[dict] = None
 
 @app.post("/api/complaint")
 async def process_complaint(req: ComplaintRequest):
@@ -680,7 +799,11 @@ async def process_complaint(req: ComplaintRequest):
             "target_gov_portals": [],
             "actionable_steps": "",
             "tts_audio_output": None,
-            "detected_language_code": "en-IN"
+            "detected_language_code": "en-IN",
+            "resolved_address": req.resolved_address,
+            "gps_location": req.gps_location,
+            "email_status": None,
+            "email_draft": None
         }
         
         # Execute the StateGraph
@@ -695,7 +818,9 @@ async def process_complaint(req: ComplaintRequest):
             "image_analysis": final_state.get("image_analysis"),
             "target_gov_portals": final_state.get("target_gov_portals"),
             "tts_audio_output": final_state.get("tts_audio_output"),
-            "detected_language_code": final_state.get("detected_language_code")
+            "detected_language_code": final_state.get("detected_language_code"),
+            "email_status": final_state.get("email_status"),
+            "email_draft": final_state.get("email_draft")
         }
     except Exception as e:
         logger.error(f"Failed to process complaint graph: {e}")

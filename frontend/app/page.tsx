@@ -77,6 +77,8 @@ export default function Home() {
     target_gov_portals: string[];
     tts_audio_output: string | null;
     detected_language_code: string;
+    email_status?: string | null;
+    email_draft?: { to: string[]; subject: string; body: string } | null;
   } | null>(null);
 
   // Auto-Fill Form Simulator State
@@ -467,6 +469,8 @@ export default function Home() {
         body: JSON.stringify({
           audio_stream: audioBase64Ref.current ?? audioBase64, // ref avoids stale closure
           uploaded_image: imageBase64,
+          resolved_address: resolvedAddress,
+          gps_location: gpsLocation,
         }),
       });
 
@@ -1313,6 +1317,34 @@ export default function Home() {
                   <div className="space-y-1 bg-slate-950/40 border border-slate-850 p-3.5 rounded-xl text-xs">
                     <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">Visual Analysis</span>
                     <p className="text-slate-300">{result.image_analysis}</p>
+                  </div>
+                )}
+
+                {/* Auto-Email Dispatch Status */}
+                {result.email_status && result.email_status !== "Not Applicable" && (
+                  <div className="space-y-2.5 bg-slate-950/40 border border-slate-850 p-3.5 rounded-xl text-xs">
+                    <div className="flex justify-between items-center border-b border-slate-850 pb-1.5">
+                      <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">📧 Direct Authority Email Dispatch</span>
+                      <span className={`px-2 py-0.5 rounded-[6px] text-[9px] font-extrabold uppercase ${
+                        result.email_status.includes("Sent") 
+                          ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" 
+                          : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                      }`}>
+                        {result.email_status.includes("Sent") ? "Sent ✓" : "Drafted ⚙"}
+                      </span>
+                    </div>
+                    <div className="space-y-1 text-slate-300">
+                      <p className="text-[10px]"><span className="text-slate-500 font-medium">To:</span> <code className="text-slate-300">{result.email_draft?.to.join(", ")}</code></p>
+                      <p className="text-[10px]"><span className="text-slate-500 font-medium">From:</span> <code className="text-slate-300">sayedaayanh@gmail.com</code></p>
+                    </div>
+                    <div className="bg-slate-950 border border-slate-850 p-2 rounded-lg text-[9px] font-mono whitespace-pre-wrap max-h-32 overflow-y-auto text-slate-400 leading-normal">
+                      {result.email_draft?.body}
+                    </div>
+                    {result.email_status.includes("Drafted") && (
+                      <p className="text-[9px] text-amber-400/90 leading-tight">
+                        💡 Set the <strong>EMAIL_PASSWORD</strong> environment variable in your backend <code>.env</code> file to enable direct sending in production.
+                      </p>
+                    )}
                   </div>
                 )}
 

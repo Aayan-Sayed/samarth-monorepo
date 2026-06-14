@@ -363,10 +363,10 @@ body {
 /* Yaseen549/chilly-dragon-64 card styling */
 .chilly-dragon-card {
   border-radius: 20px;
-  background: #212121;
-  box-shadow: 8px 8px 16px rgb(10, 10, 10),
-              -8px -8px 16px rgb(45, 45, 45);
-  border: 1px solid rgba(255, 255, 255, 0.03);
+  background: #18181b;
+  box-shadow: 4px 4px 12px rgba(0, 0, 0, 0.5),
+              -4px -4px 12px rgba(255, 255, 255, 0.01);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
 }
@@ -374,21 +374,21 @@ body {
 @media (min-width: 768px) {
   .chilly-dragon-card {
     border-radius: 30px;
-    box-shadow: 15px 15px 30px rgb(10, 10, 10),
-                -15px -15px 30px rgb(50, 50, 50);
+    box-shadow: 8px 8px 24px rgba(0, 0, 0, 0.6),
+                -8px -8px 24px rgba(255, 255, 255, 0.015);
   }
 }
 
 .chilly-dragon-card:hover {
   transform: translateY(-2px);
-  box-shadow: 10px 10px 20px rgb(5, 5, 5),
-              -10px -10px 20px rgb(50, 50, 50);
+  box-shadow: 6px 6px 18px rgba(0, 0, 0, 0.6),
+              -6px -6px 18px rgba(255, 255, 255, 0.02);
 }
 
 @media (min-width: 768px) {
   .chilly-dragon-card:hover {
-    box-shadow: 18px 18px 35px rgb(5, 5, 5),
-                -18px -18px 35px rgb(60, 60, 60);
+    box-shadow: 12px 12px 30px rgba(0, 0, 0, 0.7),
+                -12px -12px 30px rgba(255, 255, 255, 0.025);
   }
 }
 
